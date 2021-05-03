@@ -4,6 +4,12 @@ Python implmentation of a Todo.txt CLI using zero dependencies (except for Pytho
 
 ![todo-cli](https://github.com/snystedt/todo-cli/blob/main/example.PNG)
 
+is a render of the following todo.txt file:
+```
+(A) 2021-04-29 Commit the code jira:TODO-132 +todo-cli @git due:2021-04-28
+(B) Add some content so that you can see that this todo CLI can handle many rows and stuff +todo-cli @showoff 
+```
+
 ## Dotfile
 
 Dotfile currently supports options:
