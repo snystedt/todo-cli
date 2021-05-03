@@ -1,9 +1,11 @@
+from os import path
 import sys
 import os
 import argparse
 import re
 from datetime import datetime
 import shutil
+from pathlib import Path
 
 # TODO: Add archiving
 # TODO: Add editing of other things than descrip
@@ -110,7 +112,12 @@ class TodoPrinter:
             rows = 0
             for key in keys:
                 value_list_dict[key] = []
-                value = todo.__dict__[key]
+                value = ''
+                if key in todo.__dict__.keys():
+                    value = todo.__dict__[key]
+                elif key in todo.labels.keys():
+                    value = todo.labels[key]
+
                 prop = props.__dict__[key]
                 if value is None:
                     value_list_dict[key] = ['']
@@ -283,9 +290,75 @@ class Todo:
         return ret
 
 
-def load_todos():
+class Dotfile:
+    def __init__(self, filename):
+        self.show_default = []
+        self.custom_labels = {}
+        self.todo_path = None
+        self.read_dotfile(filename)
+
+    def read_dotfile(self, filename):
+        if Path(filename).is_file():
+            pattern = re.compile(r'(.+)=(.+)', re.MULTILINE | re.DOTALL)
+            with open(filename, 'r') as dotfile:
+                for line in dotfile.readlines():
+                    match = pattern.match(line)
+                    if match:
+                        prop = match.group(1).strip()
+
+                        if prop == 'show-default':
+                            self.show_default = [
+                                s.strip() for s in match.group(2).split(',')
+                            ]
+                        elif prop == 'custom-labels':
+                            self.handle_custom_label(match.group(2))
+                        elif prop == 'todo-dir':
+                            self.todo_path = match.group(
+                                2) + os.path.sep + 'todo.txt'
+
+            print('[DEBUG]: show_default = {}'.format(self.show_default))
+            print('[DEBUG]: custom_labels = {}'.format(self.custom_labels))
+            print('[DEBUG]: todo_path = {}'.format(self.todo_path))
+        else:
+            print('[DEBUG]: No dotfile exists')
+
+        if not self.todo_path:
+            self.todo_path = os.path.expanduser('~') + os.path.sep + 'todo.txt'
+
+    def handle_custom_label(self, label_str):
+        for match in re.finditer(r'(\{[^\}]*\})', label_str):
+            fields = re.search(
+                r'id:\s*([A-Za-z0-9_]+),\s*width:\s*(\d+),\s*name:\s*([A-Za-z0-9_]+),\s*type:\s*([A-Za-z]+)',
+                match.group(0), re.MULTILINE | re.DOTALL)
+            if fields:
+                self.custom_labels[fields.group(1)] = TodoPrinter.Property(
+                    False, int(fields.group(2)), fields.group(3),
+                    fields.group(4))
+
+
+def create_todofile(file_path):
+    if input(
+            '{} does not exist. Do you wish to create an empty todo.txt file at this location? (y/n): '
+            .format(file_path)) == 'y':
+        try:
+            f = open(file_path, 'w+')
+            f.close()
+        except IOError:
+            print('Failed to create todo.txt file at {}'.format(file_path))
+            return False
+    else:
+        return False
+
+    return True
+
+
+def load_todos(config):
+    if not Path(config.todo_path).is_file() and not create_todofile(
+            config.todo_path):
+        return []
+
     todos = []
-    with open(os.path.expanduser('~') + 'todo.txt', 'r+') as todo_file:
+    with open(os.path.expanduser('~') + '/' + 'todo.txt', 'r+') as todo_file:
         for idx, line in enumerate(todo_file.readlines()):
             try:
                 match = re.match(
@@ -366,9 +439,10 @@ def load_todos():
     return todos
 
 
-def write_todo_file(todos):
+def write_todo_file(config, todos):
+    temp_path = os.path.basename(config.todo_path) + '~todo.txt'
     try:
-        with open(os.path.expanduser('~') + '~todo.txt', 'w+') as todo_file:
+        with open(temp_path, 'w+') as todo_file:
             for todo in todos:
                 todo_file.write(str(todo))
     except:
@@ -376,15 +450,14 @@ def write_todo_file(todos):
         exit()
 
     try:
-        shutil.move(
-            os.path.expanduser('~') + '~todo.txt',
-            os.path.expanduser('~') + 'todo.txt')
+        shutil.move(temp_path, config.todo_path)
     except:
         print("Failed to overwrite todo.txt with modifications")
         exit()
 
 
-def add_todo(prio, created_date, description, projects, categories, due):
+def add_todo(config, prio, created_date, description, projects, categories,
+             due):
     todo = Todo(description)
 
     for c in categories:
@@ -398,12 +471,12 @@ def add_todo(prio, created_date, description, projects, categories, due):
 
     todo.set_due(due)
 
-    with open(os.path.expanduser('~') + 'todo.txt', 'a+') as todo_file:
+    with open(config.todo_path, 'a+') as todo_file:
         todo_file.write(str(todo))
 
 
-def ls_todo(category, project, due, finished):
-    todos = load_todos()
+def ls_todo(config, category, project, due, finished):
+    todos = load_todos(config)
     filtered = []
     for todo in todos:
         include = todo.matched
@@ -429,8 +502,18 @@ def ls_todo(category, project, due, finished):
     filtered.sort(key=lambda t: t.due if t.due else datetime.max)
     filtered.sort(key=lambda t: t.prio if t.prio else 'Z')
 
-    printer = TodoPrinter(
-        TodoPrinter.Properties.get_default().show_done().show_done_date())
+    props = TodoPrinter.Properties()
+    for k, v in config.custom_labels.items():
+        props.__dict__[k] = v
+
+    if len(config.show_default) > 0:
+        for field in config.show_default:
+            if field in props.__dict__:
+                props.__dict__[field].show = True
+    else:
+        props = TodoPrinter.Properties.get_default()
+
+    printer = TodoPrinter(props)
     printer.print_todos(filtered)
 
     return
@@ -446,8 +529,8 @@ def get_todo_from_line(todos, line):
         print('No match for line no: {}'.format(line))
 
 
-def remove_todo(line):
-    todos = load_todos()
+def remove_todo(config, line):
+    todos = load_todos(config)
     todo = [get_todo_from_line(todos, line)]
 
     printer = TodoPrinter(
@@ -457,11 +540,11 @@ def remove_todo(line):
     c = input('Are you sure you want to PERMANENTLY remove this Todo? (y/n): ')
     if c == 'y':
         todos = filter(lambda t: t.idx != int(line), todos)
-        write_todo_file(todos)
+        write_todo_file(config, todos)
 
 
-def edit_todo(line, description):
-    todos = load_todos()
+def edit_todo(config, line, description):
+    todos = load_todos(config)
     todo = get_todo_from_line(todos, line)
     if todo:
         todo.set_description(description)
@@ -469,8 +552,8 @@ def edit_todo(line, description):
     return
 
 
-def toggle_todo(line, status):
-    todos = load_todos()
+def toggle_todo(config, line, status):
+    todos = load_todos(config)
     todo = get_todo_from_line(todos, line)
     if todo:
         if status == 'done':
@@ -580,18 +663,20 @@ def main():
     set_parser.add_argument('status', choices=['done', 'ongoing', 'toggle'])
     args = parser.parse_args(sys.argv[1:])
 
+    config = Dotfile(os.path.expanduser('~') + '/' + '.todo-cli')
+
     if args.cmd == 'add':
-        add_todo(args.prio,
+        add_todo(config, args.prio,
                  datetime.today() if args.today else None, args.description,
                  args.project, args.category, args.due)
     elif args.cmd == 'ls':
-        ls_todo(args.category, args.project, args.due, args.finished)
+        ls_todo(config, args.category, args.project, args.due, args.finished)
     elif args.cmd == 'rm':
-        remove_todo(args.line)
+        remove_todo(config, args.line)
     elif args.cmd == 'edit':
-        edit_todo(args.line, args.description)
+        edit_todo(config, args.line, args.description)
     elif args.cmd == 'set':
-        toggle_todo(args.line, args.status)
+        toggle_todo(config, args.line, args.status)
     else:
         print(parser.print_help())
         return
