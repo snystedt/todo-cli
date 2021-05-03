@@ -316,12 +316,6 @@ class Dotfile:
                             self.todo_path = match.group(
                                 2) + os.path.sep + 'todo.txt'
 
-            print('[DEBUG]: show_default = {}'.format(self.show_default))
-            print('[DEBUG]: custom_labels = {}'.format(self.custom_labels))
-            print('[DEBUG]: todo_path = {}'.format(self.todo_path))
-        else:
-            print('[DEBUG]: No dotfile exists')
-
         if not self.todo_path:
             self.todo_path = os.path.expanduser('~') + os.path.sep + 'todo.txt'
 
