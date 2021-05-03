@@ -2,6 +2,8 @@
 
 Python implmentation of a Todo.txt CLI using zero dependencies (except for Python3)
 
+![todo-cli](https://github.com/snystedt/todo-cli/blob/main/example.PNG)
+
 ## Dotfile
 
 Dotfile currently supports options:
