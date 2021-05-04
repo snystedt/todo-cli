@@ -542,7 +542,7 @@ def edit_todo(config, line, description):
     todo = get_todo_from_line(todos, line)
     if todo:
         todo.set_description(description)
-        write_todo_file(todos)
+        write_todo_file(config, todos)
     return
 
 
@@ -559,7 +559,7 @@ def toggle_todo(config, line, status):
         else:
             print('Unrecognized status')
             exit()
-        write_todo_file(todos)
+        write_todo_file(config, todos)
 
 
 def main():
